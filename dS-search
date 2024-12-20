@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+import os
+import re
+from rich.console import Console
+import json
+
+console = Console()
+
+# File to store the saved path
+CONFIG_FILE = os.path.expanduser("~/.ds_search_config.json")
+
+# List of extensions to search
+file_extensions = [
+    'ndl', 'dat', 'lua', 'erb', 'uasset', 'vit', '_22', '140', '010', 'tle',
+    'arp', '_bp', 'rbl', 'tem', '_85', 'al_', 'vir', '_07', 'cku', 'ava', 'yer',
+    '_sh', '5_i', 'pic', 'et_', 't_2', 'hqq', 'lot', 'txt'
+]
+
+
+def save_search_path(path):
+    """Save the search path to a configuration file."""
+    with open(CONFIG_FILE, 'w') as file:
+        json.dump({'search_path': path}, file)
+
+
+def load_search_path():
+    """Load the saved search path from the configuration file."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as file:
+            data = json.load(file)
+            return data.get('search_path')
+    return None
+
+
+def search_file(file_path, search_pattern, search_type):
+    """Search inside a single file for the given pattern."""
+    matches = []
+    try:
+        with open(file_path, 'rb') as file:
+            data = file.read()
+            if search_type == "text":
+                pattern = search_pattern.encode('utf-8')
+            elif search_type == "hex":
+                pattern = bytes.fromhex(search_pattern)
+            else:
+                return matches
+            
+            for match in re.finditer(re.escape(pattern), data):
+                matches.append(match.start())
+    except Exception as e:
+        console.print(f"[red]Error reading {file_path}: {e}[/red]")
+    return matches
+
+
+def search_directory(directory, search_pattern, search_type):
+    """Search through all files in a directory."""
+    results = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.split('.')[-1] in file_extensions:
+                file_path = os.path.join(root, file)
+                matches = search_file(file_path, search_pattern, search_type)
+                if matches:
+                    results.append((file_path, matches))
+    return results
+
+
+def display_results(results, search_pattern):
+    """Display the results in Termux."""
+    if not results:
+        console.print(f"[yellow]No matches found for: {search_pattern}[/yellow]")
+        return
+
+    console.print(f"\n[bold blue]Search Results for '{search_pattern}':[/bold blue]\n")
+
+    for file_path, positions in results:
+        console.print(f"[cyan]File Path:[/cyan] {file_path}")
+        console.print(f"[green]Match Positions:[/green] {', '.join(map(str, positions))}\n")
+
+    console.print(f"[bold yellow]Total Matches: {len(results)}[/bold yellow]")
+
+
+def custom_menu():
+    """Display a custom menu."""
+    console.print("\n=====================================================")
+    console.print("[1] 🔍 Search with Hexadecimal Pattern")
+    console.print("[2] 🔍 Search with Text Pattern")
+    console.print("[3] 💾 Save Default Search Path")
+    console.print("[4] 🔄 Change Default Search Path")
+    console.print("[5] ❌ Exit\n")
+    choice = console.input("[bold yellow]Your choice (1/2/3/4/5): [/bold yellow]").strip()
+    return choice
+
+
+def main():
+    while True:
+        choice = custom_menu()
+        
+        if choice in ["1", "2"]:
+            search_type = "hex" if choice == "1" else "text"
+
+            default_path = load_search_path()
+            if default_path:
+                use_saved_path = console.input(
+                    f"[bold cyan]Use saved path '{default_path}'? (y/n): [/bold cyan]"
+                ).strip().lower()
+                if use_saved_path == "y":
+                    directory = default_path
+                else:
+                    directory = console.input(
+                        "[bold cyan]Enter the directory to search in: [/bold cyan]"
+                    ).strip()
+            else:
+                directory = console.input(
+                    "[bold cyan]Enter the directory to search in: [/bold cyan]"
+                ).strip()
+
+            if not os.path.isdir(directory):
+                console.print("[bold red]Invalid directory! Please try again.[/bold red]")
+                continue
+
+            search_pattern = console.input(
+                f"[bold cyan]Enter the {search_type} pattern to search: [/bold cyan]"
+            ).strip()
+            if not search_pattern:
+                console.print("[bold red]Search pattern cannot be empty! Please try again.[/bold red]")
+                continue
+
+            console.print("[bold yellow]Searching... Please wait.[/bold yellow]")
+            results = search_directory(directory, search_pattern, search_type)
+            display_results(results, search_pattern)
+
+        elif choice == "3":
+            directory = console.input("[bold cyan]Enter the directory to save as default: [/bold cyan]").strip()
+            if os.path.isdir(directory):
+                save_search_path(directory)
+                console.print("[bold green]Default search path saved successfully![/bold green]")
+            else:
+                console.print("[bold red]Invalid directory! Please try again.[/bold red]")
+
+        elif choice == "4":
+            default_path = load_search_path()
+            if default_path:
+                console.print(f"[bold green]Current Default Path:[/bold green] {default_path}")
+                new_path = console.input("[bold cyan]Enter the new default search path: [/bold cyan]").strip()
+                if os.path.isdir(new_path):
+                    save_search_path(new_path)
+                    console.print("[bold green]Default search path updated successfully![/bold green]")
+                else:
+                    console.print("[bold red]Invalid directory! Please try again.[/bold red]")
+            else:
+                console.print("[bold yellow]No default search path found. Use option 3 to set one.[/bold yellow]")
+
+        elif choice == "5":
+            console.print("[bold yellow]Exiting... Have a great day![/bold yellow]")
+            break
+
+        else:
+            console.print("[bold red]Invalid choice! Please try again.[/bold red]")
+
+
+if __name__ == "__main__":
+    main()
